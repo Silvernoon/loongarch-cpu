@@ -1,1 +1,5 @@
 *cache/
+
+# simulation build artifacts
+sim/*.vvp
+sim/*.vcd
