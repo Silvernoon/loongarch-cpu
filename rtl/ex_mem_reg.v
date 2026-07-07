@@ -2,9 +2,8 @@
 // ex_mem_reg.v  —  EX/MEM pipeline register
 //
 // Passes the ALU result (address for loads/stores), the store data, and the
-// memory / write-back control down to the MEM stage.  No stall input: once an
-// instruction leaves EX it always advances (divide stalls are handled before
-// EX by freezing ID/EX).
+// memory / write-back control down to the MEM stage.  Cache misses can freeze
+// this register so the instruction owning the MEM access is not lost.
 // =============================================================================
 `timescale 1ns / 1ps
 `include "defines.vh"
@@ -12,6 +11,7 @@
 module ex_mem_reg(
     input  wire        clk,
     input  wire        rst_n,
+    input  wire        stall,        // hold during cache miss
     input  wire        bubble,       // squash: no reg write, no mem op
 
     input  wire        reg_write_in,
@@ -48,6 +48,8 @@ module ex_mem_reg(
             store_data_out   <= 32'd0;
             pc4_out          <= 32'd0;
             rd_addr_out      <= 5'd0;
+        end else if (stall) begin
+            ;                       // hold everything
         end else begin
             reg_write_out    <= bubble ? 1'b0 : reg_write_in;
             wb_sel_out       <= wb_sel_in;

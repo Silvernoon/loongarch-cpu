@@ -11,8 +11,10 @@
 //     already fetched behind it (in IF and ID) are wrong-path and must be
 //     flushed.
 //
-// Multi-cycle divide is handled with a separate ex_busy stall that freezes the
-// front of the pipe until the divider asserts done.
+// Multi-cycle divide and cache misses are handled with separate busy/stall
+// inputs.  I-cache stalls freeze the front end and inject bubbles into EX,
+// while D-cache stalls freeze the whole pipe so the MEM-stage access remains
+// in place until the cache returns data.
 // =============================================================================
 `timescale 1ns / 1ps
 
@@ -31,6 +33,10 @@ module hazard_unit(
     // long-latency EX (divider running)
     input  wire        ex_busy,
 
+    // cache miss in progress
+    input  wire        i_stall,
+    input  wire        d_stall,
+
     output wire        stall_pc,        // freeze PC
     output wire        stall_if_id,     // freeze IF/ID register
     output wire        bubble_id_ex,    // inject NOP into ID/EX
@@ -42,10 +48,11 @@ module hazard_unit(
                     ( (if_id_uses_rj && id_ex_rd == if_id_rj) ||
                       (if_id_uses_rk && id_ex_rd == if_id_rk) );
 
-    // Divide stall dominates: hold everything until the unit is free.
-    assign stall_pc    = load_use | ex_busy;
-    assign stall_if_id = load_use | ex_busy;
-    assign bubble_id_ex= load_use & ~ex_busy;   // insert bubble for load-use
+    // Long EX/D-cache stalls hold the pipeline.  I-cache misses hold only the
+    // front end and bubble EX so the instruction in ID is not executed twice.
+    assign stall_pc    = load_use | ex_busy | i_stall | d_stall;
+    assign stall_if_id = load_use | ex_busy | i_stall | d_stall;
+    assign bubble_id_ex= (load_use | i_stall) & ~ex_busy & ~d_stall;
 
     // On a taken branch (resolved in EX) squash the two wrong-path insns.
     assign flush_if_id = branch_taken;

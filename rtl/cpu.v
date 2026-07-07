@@ -36,6 +36,7 @@ module cpu #(
     // =====================================================================
     wire        stall_pc, stall_if_id, bubble_id_ex, flush_if_id, flush_id_ex;
     wire        ex_busy;               // divide in flight (declared here, driven in EX)
+    wire        i_stall, d_stall;
     wire        branch_taken;          // resolved in EX
     wire [31:0] branch_target;         // resolved in EX
 
@@ -49,7 +50,8 @@ module cpu #(
     );
 
     imem #(.INIT_FILE(INIT_FILE)) u_imem(
-        .addr(if_pc), .inst(if_inst)
+        .clk(clk), .rst_n(rst_n),
+        .addr(if_pc), .inst(if_inst), .stall(i_stall)
     );
 
     // =====================================================================
@@ -141,7 +143,7 @@ module cpu #(
 
     id_ex_reg u_id_ex(
         .clk(clk), .rst_n(rst_n),
-        .stall(ex_busy),           // only a running divide freezes ID/EX
+        .stall(ex_busy | d_stall), // long EX op or D-cache miss freezes ID/EX
         .clear(id_ex_clear),
         .reg_write_in(c_reg_write), .wb_sel_in(c_wb_sel),
         .alu_src_imm_in(c_alu_src_imm), .alu_src_pc_in(c_alu_src_pc),
@@ -269,6 +271,7 @@ module cpu #(
     // A divide still running must not commit; freeze via bubble.
     ex_mem_reg u_ex_mem(
         .clk(clk), .rst_n(rst_n),
+        .stall(d_stall),
         .bubble(ex_busy),
         .reg_write_in(x_reg_write), .wb_sel_in(x_wb_sel),
         .mem_read_in(x_mem_read), .mem_write_in(x_mem_write),
@@ -289,10 +292,10 @@ module cpu #(
     wire [31:0] m_load_data;
 
     dmem u_dmem(
-        .clk(clk),
+        .clk(clk), .rst_n(rst_n),
         .addr(m_alu_result), .we(m_mem_write), .re(m_mem_read),
         .width(m_mem_width), .load_unsigned(m_mem_unsigned),
-        .wdata(m_store_data), .rdata(m_load_data)
+        .wdata(m_store_data), .rdata(m_load_data), .stall(d_stall)
     );
 
     // =====================================================================
@@ -303,6 +306,7 @@ module cpu #(
 
     mem_wb_reg u_mem_wb(
         .clk(clk), .rst_n(rst_n),
+        .stall(d_stall),
         .reg_write_in(m_reg_write), .wb_sel_in(m_wb_sel),
         .mem_data_in(m_load_data), .alu_result_in(m_alu_result),
         .pc4_in(m_pc4), .rd_addr_in(m_rd_addr),
@@ -334,6 +338,8 @@ module cpu #(
         .if_id_uses_rj(c_reads_rj), .if_id_uses_rk(c_reads_rk),
         .branch_taken(branch_taken),
         .ex_busy(ex_busy),
+        .i_stall(i_stall),
+        .d_stall(d_stall),
         .stall_pc(stall_pc), .stall_if_id(stall_if_id),
         .bubble_id_ex(bubble_id_ex),
         .flush_if_id(flush_if_id), .flush_id_ex(flush_id_ex)

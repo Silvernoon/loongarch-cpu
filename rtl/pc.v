@@ -22,9 +22,15 @@ module pc #(
     wire        c, o;
     adder32 inc(.a(pc), .b(32'd4), .sub(1'b0), .sum(pc_plus4), .cout(c), .overflow(o));
 
+    reg reset_seen;
+
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n) begin
             pc <= RESET_VECTOR;
+            reset_seen <= 1'b0;
+        end else if (!reset_seen) begin
+            reset_seen <= 1'b1;     // give fetch/miss logic one cycle to settle
+        end
         else if (redirect)
             pc <= redirect_pc;   // redirect wins over stall (branch resolved)
         else if (!stall)

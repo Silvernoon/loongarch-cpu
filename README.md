@@ -56,33 +56,44 @@ CPU通过BUS与外部模块交流
 
 ### 物理运算单元（替换原行为级 ALU）
 
-| 文件 | 说明 |
-| --- | --- |
-| `full_adder.v` | 1 位全加器，纯 `and/or/xor` 门原语 |
-| `adder32.v` | 32 位行波进位加/减法器，由 32 个全加器串联；导出进位与有符号溢出 |
-| `barrel_shifter.v` | 对数桶形移位器（1/2/4/8/16 五级 mux），支持 SLL/SRL/SRA |
-| `array_mult.v` | 32×32 阵列乘法器：AND 阵列生成部分积 + 进位保存树 + 末级行波加 |
-| `mult_unit.v` | 有/无符号选择与高低字选择（MUL/MULH/MULH.WU），符号靠取反处理 |
-| `div_unit.v` | 32 位恢复余数除法器，逐位迭代（多周期），有/无符号，商向零截断 |
-| `alu.v` | 单周期组合 ALU，组合上面的加法器、桶形移位器与逻辑门阵列；SLT/SLTU 由同一次减法推导 |
+| 文件               | 说明                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `full_adder.v`     | 1 位全加器，纯 `and/or/xor` 门原语                                                  |
+| `adder32.v`        | 32 位行波进位加/减法器，由 32 个全加器串联；导出进位与有符号溢出                    |
+| `barrel_shifter.v` | 对数桶形移位器（1/2/4/8/16 五级 mux），支持 SLL/SRL/SRA                             |
+| `array_mult.v`     | 32×32 阵列乘法器：AND 阵列生成部分积 + 进位保存树 + 末级行波加                      |
+| `mult_unit.v`      | 有/无符号选择与高低字选择（MUL/MULH/MULH.WU），符号靠取反处理                       |
+| `div_unit.v`       | 32 位恢复余数除法器，逐位迭代（多周期），有/无符号，商向零截断                      |
+| `alu.v`            | 单周期组合 ALU，组合上面的加法器、桶形移位器与逻辑门阵列；SLT/SLTU 由同一次减法推导 |
 
 ### 数据通路与流水线
 
-| 文件 | 阶段 | 说明 |
-| --- | --- | --- |
-| `pc.v` | IF | 程序计数器 + PC 加法器，支持重定向/停顿 |
-| `imem.v` | IF | 哈佛结构指令存储（`$readmemh` 载入程序） |
-| `control_unit.v` | ID | CU 译码，产生所有控制信号（操作码取自 binutils） |
-| `imm_gen.v` | ID | 各指令格式立即数抽取与扩展 |
-| `regfile.v` | ID/WB | 双端口寄存器堆，r0 恒零，写优先旁路 |
-| `branch_unit.v` | EX | 分支条件判定（复用减法器做比较） |
-| `forwarding_unit.v` | EX | EX/MEM、MEM/WB → EX 前递 |
-| `hazard_unit.v` | — | load-use 停顿、分支冲刷、除法多周期停顿 |
-| `dmem.v` | MA | 字节/半字/字访存，带符号/零扩展 |
-| `{if_id,id_ex,ex_mem,mem_wb}_reg.v` | — | 四个流水寄存器，支持停顿/冒泡/冲刷 |
-| `cpu.v` | — | 顶层，按数据通路图连接五级流水 |
+| 文件                                | 阶段  | 说明                                             |
+| ----------------------------------- | ----- | ------------------------------------------------ |
+| `pc.v`                              | IF    | 程序计数器 + PC 加法器，支持重定向/停顿          |
+| `imem.v`                            | IF    | 哈佛结构指令存储 + 最小直接映射 I-Cache（`$readmemh` 载入程序） |
+| `control_unit.v`                    | ID    | CU 译码，产生所有控制信号（操作码取自 binutils） |
+| `imm_gen.v`                         | ID    | 各指令格式立即数抽取与扩展                       |
+| `regfile.v`                         | ID/WB | 双端口寄存器堆，r0 恒零，写优先旁路              |
+| `branch_unit.v`                     | EX    | 分支条件判定（复用减法器做比较）                 |
+| `forwarding_unit.v`                 | EX    | EX/MEM、MEM/WB → EX 前递                         |
+| `hazard_unit.v`                     | —     | load-use 停顿、分支冲刷、除法多周期停顿          |
+| `dmem.v`                            | MA    | 字节/半字/字访存 + 最小直接映射 D-Cache，带符号/零扩展 |
+| `{if_id,id_ex,ex_mem,mem_wb}_reg.v` | —     | 四个流水寄存器，支持停顿/冒泡/冲刷               |
+| `cpu.v`                             | —     | 顶层，按数据通路图连接五级流水                   |
 
 分支/跳转在 EX 解析，随后冲刷两条错误取指。除法在 EX 用 busy/done 握手停顿流水。
+I-Cache miss 会冻结取指/译码前端并向 EX 注入气泡，D-Cache miss 会冻结整条流水，
+保证 MEM 阶段访存指令不会丢失。
+
+### 最小 Cache
+
+`imem.v` 和 `dmem.v` 现在都包含一个一字宽 cache line 的直接映射 Cache：
+
+- I-Cache：只读，`valid + tag + data`，miss 后等待 `MISS_PENALTY` 周期并从指令后备存储填充。
+- D-Cache：`valid + tag + data`，支持字节/半字/字 load/store；store 采用 write-through，并同步更新命中的 cache line。
+- Cache 的目标是期末设计展示用的基础 hit/miss/stall 机制，不实现多字 cache line、dirty/write-back、替换策略扩展或异常处理。
+- `sim/cache_tb.v` 专门检查首次 miss、重复 hit、直接映射冲突、D-Cache refill，以及 Vivado/XSim 目录下 `sim/prog.hex` 的自动查找。
 
 ### 构建与仿真
 
@@ -93,15 +104,21 @@ make          # 编译并运行基础回归（33 项寄存器/访存检查）
 make stress   # 运行第二个压力程序（循环、MULH、有/无符号除法、访存符号扩展）
 ```
 
-两个测试程序（`sim/prog.s`、`sim/prog2.s`）的期望值由一个独立的 Python
-参考模型（`tools/la32.py` 同款编码）计算得出，`make` 运行时逐寄存器比对，
-目前 **全部通过**。用 `tools/la32.py` 可重新汇编生成 `.hex` 镜像。
+两个测试程序（`sim/prog.s`、`sim/prog2.s`）的期望值固化在
+`sim/checks.vh`、`sim/checks2.vh` 中，`make` 运行时逐寄存器比对。
+用 `tools/la32.py` 可重新汇编生成 `.hex` 镜像。
 
-### 差分测试：以 LARS 为金标准
+Vivado 2019.1 下已验证：
+
+- `sources_1` / `sim_1` 语法检查通过。
+- `cache_tb`、`cpu_tb`、`cpu_tb2` 行为仿真均为 `errors=0`。
+- 当前工程器件 `xc7vx485tffg1157-1` 在本机没有 Synthesis license；换用免费器件尝试完整综合时，结构化 32x32 阵列乘法器展开耗时很长，因此本项目以 Vivado 语法检查和行为仿真作为当前交付证据。
+
+### 差分测试：以 LARS 为标准
 
 除了 `tools/la32.py` 这个轻量参考模型，本项目还接入了 **LARS**
 （LoongArch Assembler and Runtime Simulator，MARS 的龙芯移植版，`../LARS`）
-作为**功能金标准**，对 CPU 做差分测试：同一份汇编源程序分别在 LARS 和
+作为**功能标准**，对 CPU 做差分测试：同一份汇编源程序分别在 LARS 和
 Verilog 核上运行，逐寄存器 + 逐字比对最终体系结构状态。LARS 的结果为准，
 不一致即视为 CPU 缺陷。
 
@@ -141,4 +158,3 @@ python3 tools/diff_test.py sim/prog3.s --mem 0x300 0x30c -v
 - **`lu12i.w` 立即数范围**：LARS 按有符号 20 位做边界检查
   （`-0x80000..0x7ffff`），而 `la32.py` 直接截断。共享源程序须落在有符号范围内，
   `prog3.s` 的高位立即数据此选取。
-

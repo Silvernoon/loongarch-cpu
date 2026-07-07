@@ -11,6 +11,7 @@
 module mem_wb_reg(
     input  wire        clk,
     input  wire        rst_n,
+    input  wire        stall,
 
     input  wire        reg_write_in,
     input  wire [1:0]  wb_sel_in,
@@ -34,6 +35,8 @@ module mem_wb_reg(
             alu_result_out <= 32'd0;
             pc4_out        <= 32'd0;
             rd_addr_out    <= 5'd0;
+        end else if (stall) begin
+            ;                       // hold during cache miss
         end else begin
             reg_write_out  <= reg_write_in;
             wb_sel_out     <= wb_sel_in;
