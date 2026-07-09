@@ -1,5 +1,5 @@
 // =============================================================================
-// diff_tb.v  â€”  differential-test harness testbench for the LA32 core
+// diff_tb.v  â€?  differential-test harness testbench for the LA32 core
 //
 // Runs the CPU on a program image and dumps the final architectural state
 // (all 32 GPRs + a configurable data-memory window) to a plain-text file the
@@ -55,7 +55,7 @@ module diff_tb;
         if (!$value$plusargs("CYCLES=%d", cycles)) cycles = 4000;
         if (!$value$plusargs("MEMLO=%h", mem_lo))  mem_lo = 0;
         if (!$value$plusargs("MEMHI=%h", mem_hi))  mem_hi = 0;
-        void'($value$plusargs("DUMP=%s", dump_file));
+        $value$plusargs("DUMP=%s", dump_file);
 
         rst_n = 0;
         repeat (4) @(posedge clk);
