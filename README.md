@@ -152,9 +152,11 @@ python3 tools/diff_test.py sim/prog3.s --mem 0x300 0x30c -v
   文本段基址 `0x3000`）。测试平台 `sim/diff_tb.v` 把 CPU 的 `RESET_VECTOR`
   设为 `0x3000`，使 `bl`/`jirl` 写入的返回地址与 LARS 完全相等，
   从而全部按值直接比对，无需偏移换算。数据段两边都从 0 起址，天然对齐。
-- **只比功能，不比编码**：LARS 内部对立即数类指令的机器码编码与 binutils
-  略有差异，但其“汇编→仿真”闭环自洽，故仅比对体系结构状态（寄存器 + 内存），
-  与位级编码无关。
+- **功能与机器码双重对齐**：本机 `D:/LARS/Lars.jar` 已修正原版 LARS 中
+  `addi.w` 与 `sltui` 误用同一编码、分支标签按 `PC+4` 计算偏移的问题。配合
+  `CompactDataAtZero` 后，LARS 文本段从 `0x3000` 开始；`sim/demo_all.s` 导出的
+  65 个机器字与 `sim/demo_all.hex` 逐字一致（差异数为 0），最终 32 个寄存器状态
+  也与 Vivado/XSim 一致。原版 JAR 保存在 `D:/LARS/Lars.jar.bak-*`。
 - **`lu12i.w` 立即数范围**：LARS 按有符号 20 位做边界检查
   （`-0x80000..0x7ffff`），而 `la32.py` 直接截断。共享源程序须落在有符号范围内，
   `prog3.s` 的高位立即数据此选取。
